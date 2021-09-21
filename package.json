@@ -1,7 +1,7 @@
 {
   "name": "shorturl",
   "version": "1.0.3",
-  "author":"Suyog Patil",
+  "author": "Suyog Patil",
   "description": "API project for freeCodeCamp",
   "main": "server.js",
   "scripts": {
