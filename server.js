@@ -1,16 +1,18 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const dns = require("dns");
-const bodyParse = require("body-parser");
-const url = require("url");
-// const mongodb =require("mongodb");
-// const moongose = require("mongoose");
+var validUrl = require("valid-url");
+const mongoose = require("mongoose");
+const { query } = require("express");
 const app = express();
 
 // Basic Configuration
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 8080;
 
+mongoose.connect(process.env.MONGO_URL, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
 app.use(cors());
 app.use("/public", express.static(`${process.cwd()}/public`));
 
@@ -23,24 +25,65 @@ app.get("/api/hello", function (req, res) {
   res.json({ greeting: "hello API" });
 });
 
-app.use(bodyParse.urlencoded({ extended: false }));
-app.post("/api/shorturl", (req, res) => {
+app.use(express.urlencoded({ extended: false }));
+
+const shorturlSchema = new mongoose.Schema({
+  original_url: { type: String, required: true },
+  short_url: { type: Number, unique: true },
+});
+
+const ShortUrl = mongoose.model("UrlShortnercollection", shorturlSchema);
+
+app.post("/api/shorturl", async (req, res) => {
   const requrl = req.body.url;
-  let parsedurl = url.parse(requrl);
-  var isValid = false;
-  dns.lookup(parsedurl.hostname, (err, address, family) => {
-    if (err) {
-      return console.log(err);
+  let newNum = 1;
+
+  if (validUrl.isUri(requrl)) {
+    var query = await ShortUrl.find({}).sort({
+      short_url: "asc",
+    });
+    var index = null;
+    query.forEach((value, indexs, array) => {
+      if (value.original_url === requrl) {
+        index = indexs;
+      }
+    });
+    
+    if (index != null &&query.length != 0) {
+      res.json({
+        original_url: query[index].original_url,
+        short_url: query[index].short_url,
+      });
+    } else {
+      if (index == null) newNum = query[query.length-1].short_url + 1;
+      ShortUrl.create(
+        { original_url: requrl, short_url: newNum },
+        (err, data) => {
+          if (err) return handleError(err);
+          res.json({
+            original_url: data.original_url,
+            short_url: data.short_url,
+          });
+        }
+      );
     }
-    console.log("address = ", address);
-    if (typeof address !== "undefined" || address != null) {
-      var isValid = true;
-    }
-  });
-  if (isValid) {
-    res.json({ original_url: requrl, short_url: 2 });
   } else {
     res.json({ error: "invalid url" });
+  }
+});
+
+//redirection route
+app.get("/api/shorturl/:short?", (req, res) => {
+  var redirectUrlid = req.params.short;
+  if (redirectUrlid == undefined) {
+    res.end("Not found");
+  } else if (isNaN(redirectUrlid)) {
+    res.json({ error: "invalid url" });
+  } else {
+    ShortUrl.findOne({ short_url: redirectUrlid }, (err, newurl) => {
+      if (err) return handleError(err);
+      res.redirect(newurl.original_url);
+    });
   }
 });
 
