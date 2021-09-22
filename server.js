@@ -2,10 +2,11 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 var validUrl = require("valid-url");
+const url = require("url");
 const mongoose = require("mongoose");
-const { query } = require("express");
+const bodyParser = require("body-parser");
+const dns = require("dns");
 const app = express();
-
 // Basic Configuration
 const port = process.env.PORT || 8080;
 
@@ -35,40 +36,42 @@ const shorturlSchema = new mongoose.Schema({
 const ShortUrl = mongoose.model("UrlShortnercollection", shorturlSchema);
 
 app.post("/api/shorturl", async (req, res) => {
-  const requrl = req.body.url;
-  let newNum = 1;
-
-  if (validUrl.isUri(requrl)) {
-    var query = await ShortUrl.find({}).sort({
-      short_url: "asc",
-    });
-    var index = null;
-    query.forEach((value, indexs, array) => {
-      if (value.original_url === requrl) {
-        index = indexs;
+  const reqUrl = req.body.url;
+  // TODO : {error "Invalid Hostname"}
+  //check valid url
+  if (validUrl.isUri(reqUrl)) {
+    //if valid url
+    const temp = url.parse(reqUrl, true);
+    // console.log("Valid url");
+    dns.lookup(temp.hostname, async function (err, address, _) {
+      if (err) {
+        res.json({ error: "Invalid Hostname" });
       }
-    });
-    
-    if (index != null &&query.length != 0) {
-      res.json({
-        original_url: query[index].original_url,
-        short_url: query[index].short_url,
-      });
-    } else {
-      if (index == null) newNum = query[query.length-1].short_url + 1;
-      ShortUrl.create(
-        { original_url: requrl, short_url: newNum },
-        (err, data) => {
-          if (err) return handleError(err);
-          res.json({
-            original_url: data.original_url,
-            short_url: data.short_url,
-          });
+      if (address.length > 0) {
+        var responseJson = {
+          original_url: null,
+          short_url: null,
+        };
+        // valid address
+        var foundUrl = await ShortUrl.findOne({ original_url: reqUrl }).exec();
+        if (foundUrl === null) {
+          // no url present with name `reqUrl` so create here
+          var query = await ShortUrl.find({}).sort({ short_url: "desc" });
+          responseJson.original_url = reqUrl;
+          responseJson.short_url = query[0].short_url + 1;
+          ShortUrl.create(responseJson);
+        } else {
+          responseJson.original_url = foundUrl.original_url;
+          responseJson.short_url = foundUrl.short_url;
         }
-      );
-    }
+        // console.log(foundUrl);
+        res.json(responseJson);
+      }
+      res.end();
+    });
   } else {
-    res.json({ error: "invalid url" });
+    // if invalid Url
+    res.json({ error: "Invalid URL" });
   }
 });
 
@@ -78,10 +81,10 @@ app.get("/api/shorturl/:short?", (req, res) => {
   if (redirectUrlid == undefined) {
     res.end("Not found");
   } else if (isNaN(redirectUrlid)) {
-    res.json({ error: "invalid url" });
+    res.json({ error: "Wrong format" });
   } else {
     ShortUrl.findOne({ short_url: redirectUrlid }, (err, newurl) => {
-      if (err) return handleError(err);
+      if (err) return console.log(err);
       res.redirect(newurl.original_url);
     });
   }
