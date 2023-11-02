@@ -10,6 +10,7 @@ const app = express();
 // Basic Configuration
 const port = process.env.PORT || 8080;
 
+mongoose.set("strictQuery", false);
 mongoose.connect(process.env.MONGO_URL, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
